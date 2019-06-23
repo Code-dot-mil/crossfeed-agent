@@ -34,7 +34,7 @@ func initPortScan(urls []string) {
 	fmt.Println("Exporting hosts to file...")
 
 	// Fetch all ip addresses from db and sort
-	query := "SELECT ip FROM \"Domains\" WHERE ip IS NOT NULL AND ip <> '';"
+	query := `SELECT ip FROM "Domains" WHERE ip IS NOT NULL AND ip <> '';`
 	rows, err := db.Query(query)
 	handleError(err)
 	csvConverter := sqltocsv.New(rows)
@@ -84,7 +84,9 @@ func initPortScan(urls []string) {
 		fmt.Println(fmt.Sprintf("Uploading %d found open ports to db...", len(ipsArray)))
 
 		// Please excuse this horrific UPSERT query for the time being, there's no easy way to do it in go.
-		query = "UPDATE \"Domains\" SET ports = \"Domains\".ports || ',' || data_table.ports FROM (SELECT unnest(array[" + strings.Join(ipsArray[:], ",") + "]) as ip, unnest(array[" + strings.Join(portsArray[:], ",") + "]) as ports) as data_table where \"Domains\".ip = data_table.ip AND strpos(\"Domains\".ports, data_table.ports) = 0;"
+		query = `UPDATE "Domains" SET ports = CASE WHEN "Domains".ports IS NOT NULL AND "Domains".ports <> '' THEN "Domains".ports || ',' || data_table.ports ELSE data_table.ports END
+					FROM (SELECT unnest(array[` + strings.Join(ipsArray[:], ",") + `]) as ip, unnest(array[` + strings.Join(portsArray[:], ",") + `]) as ports)
+					as data_table where "Domains".ip = data_table.ip AND strpos("Domains".ports, data_table.ports) = 0;`
 
 		_, err = db.Exec(query)
 		handleError(err)
