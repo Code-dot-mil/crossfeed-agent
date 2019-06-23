@@ -1,20 +1,20 @@
 package main
 
 import (
+	"bufio"
 	"database/sql"
 	"fmt"
-	"log"
 	"github.com/joho/sqltocsv"
-	"os/exec"
+	"log"
 	"os"
+	"os/exec"
 	"strings"
-	"bufio"
 )
 
 type Domain struct {
-    name string
-    ip  string
-    ports string
+	name  string
+	ip    string
+	ports string
 }
 
 func scanPorts(arguments map[string]interface{}) {
@@ -31,7 +31,6 @@ func scanPorts(arguments map[string]interface{}) {
 		fmt.Println("Command not found: scanPorts" + arguments["<subcommand>"].(string))
 	}
 }
-
 
 func initPortScan(ports string) {
 	var path string = "output/portscan/ips-" + getTimestamp(false) + ".txt"
@@ -60,26 +59,26 @@ func initPortScan(ports string) {
 	var outpath string = "output/portscan/" + port + "-" + getTimestamp(false) + ".txt"
 	cmd := exec.Command("comm", "-12", sonar, path)
 	out, err := os.Create(outpath)
-    handleError(err)
-    defer out.Close()
-    cmd.Stdout = out
+	handleError(err)
+	defer out.Close()
+	cmd.Stdout = out
 
-    err = cmd.Start();
-    handleError(err)
-    cmd.Wait()
+	err = cmd.Start()
+	handleError(err)
+	cmd.Wait()
 	fmt.Println("Successfully exported! See " + outpath)
 
 	file, err := os.Open(outpath)
-    handleError(err)
-    defer file.Close()
+	handleError(err)
+	defer file.Close()
 
-    scanner := bufio.NewScanner(file)
-    var ipsArray []string
-    var portsArray []string
-    for scanner.Scan() {
-    	ipsArray = append(ipsArray, fmt.Sprintf("'%s'", scanner.Text()))
-    	portsArray = append(portsArray, fmt.Sprintf("'%s'", ports))
-    }
+	scanner := bufio.NewScanner(file)
+	var ipsArray []string
+	var portsArray []string
+	for scanner.Scan() {
+		ipsArray = append(ipsArray, fmt.Sprintf("'%s'", scanner.Text()))
+		portsArray = append(portsArray, fmt.Sprintf("'%s'", ports))
+	}
 
 	fmt.Println("Uploading to db...")
 
@@ -92,4 +91,3 @@ func initPortScan(ports string) {
 	fmt.Println("Done!")
 
 }
-
