@@ -31,7 +31,7 @@ func initPortScan(urls []string) {
 	err = db.Ping()
 	handleError(err)
 
-	fmt.Println("Exporting hosts to file...")
+	log.Println("Exporting hosts to file...")
 
 	// Fetch all ip addresses from db and sort
 	query := `SELECT ip FROM "Domains" WHERE ip IS NOT NULL AND ip <> '';`
@@ -43,7 +43,7 @@ func initPortScan(urls []string) {
 	var hostsPath string = "output/portscan/ips-" + getTimestamp(false) + ".txt"
 	err = csvConverter.WriteFile(hostsPath)
 	handleError(err)
-	fmt.Println("Sorting...")
+	log.Println("Sorting...")
 	_, err = exec.Command("sort", "-o", hostsPath, hostsPath).Output()
 	handleError(err)
 
@@ -52,7 +52,7 @@ func initPortScan(urls []string) {
 		port := split[len(split) - 1]
 
 		// Download Sonar data for url
-		fmt.Println("Starting port scan for port " + port + " using " + url)
+		log.Println("Starting port scan for port " + port + " using " + url)
 		_, err := exec.Command("/bin/sh", "prepare_files.sh", url, port).Output()
 		handleError(err)
 
@@ -67,7 +67,7 @@ func initPortScan(urls []string) {
 		err = cmd.Start()
 		handleError(err)
 		cmd.Wait()
-		fmt.Println("Files successfully compared! See " + outpath)
+		log.Println("Files successfully compared! See " + outpath)
 
 		file, err := os.Open(outpath)
 		handleError(err)
@@ -81,7 +81,7 @@ func initPortScan(urls []string) {
 		}
 		file.Close()
 
-		fmt.Println(fmt.Sprintf("Uploading %d found open ports to db...", len(ipsArray)))
+		log.Println(fmt.Sprintf("Uploading %d found open ports to db...", len(ipsArray)))
 
 		// Please excuse this horrific UPSERT query for the time being, there's no easy way to do it in go.
 		query = `UPDATE "Domains" SET ports = CASE WHEN "Domains".ports IS NOT NULL AND "Domains".ports <> '' THEN "Domains".ports || ',' || data_table.ports ELSE data_table.ports END
@@ -97,10 +97,10 @@ func initPortScan(urls []string) {
 		err = os.Remove(outpath)
 		handleError(err)
 
-		fmt.Println("Done scanning ports for port " + port + " using " + url)
+		log.Println("Done scanning ports for port " + port + " using " + url)
 	}
 
-	fmt.Println("Finished port scan for " + strings.Join(urls,","))
+	log.Println("Finished port scan for " + strings.Join(urls,","))
 
 	err = os.Remove(hostsPath)
 	handleError(err)
