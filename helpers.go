@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"time"
+	"log"
 )
 
 func handleError(err error) {
@@ -25,4 +26,11 @@ func getTimestamp(detailed bool) string {
 func hasKey(arguments map[string]interface{}, key string) bool {
 	_, exists := arguments[key]
 	return exists && (arguments[key] != nil)
+}
+
+func getArgs(arguments map[string]interface{}) []string {
+	if !hasKey(arguments, "<args>") {
+		log.Fatal("Please provide args.")
+	}
+	return arguments["<args>"].([]string)
 }

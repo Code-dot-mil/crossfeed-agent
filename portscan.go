@@ -17,25 +17,14 @@ type Domain struct {
 	ports string
 }
 
-func scanPorts(arguments map[string]interface{}) {
-	if !hasKey(arguments, "<subcommand>") {
-		log.Fatal("Please provide a subcommand. (either exportHosts or scan)")
+func scanPorts(args []string) {
+	if len(args) < 1 {
+		log.Fatal("Please provide the project sonar url")
 	}
-	switch arguments["<subcommand>"].(string) {
-	case "scan":
-		if !hasKey(arguments, "--ports") {
-			log.Fatal("Please indicate the ports")
-		}
-		initPortScan(arguments["--ports"].(string))
-	default:
-		fmt.Println("Command not found: scanPorts" + arguments["<subcommand>"].(string))
-	}
+	initPortScan(strings.Split(args[0], ","))
 }
 
-func initPortScan(ports string) {
-	var path string = "output/portscan/ips-" + getTimestamp(false) + ".txt"
-	var port string = ports
-
+func initPortScan(urls []string) {
 	db, err := sql.Open("postgres", psqlInfo)
 	handleError(err)
 	defer db.Close()
@@ -44,50 +33,74 @@ func initPortScan(ports string) {
 
 	fmt.Println("Exporting hosts to file...")
 
+	// Fetch all ip addresses from db and sort
 	query := "SELECT ip FROM \"Domains\" WHERE ip IS NOT NULL AND ip <> '';"
 	rows, err := db.Query(query)
 	handleError(err)
 	csvConverter := sqltocsv.New(rows)
 	csvConverter.WriteHeaders = false
-	err = csvConverter.WriteFile(path)
+
+	var hostsPath string = "output/portscan/ips-" + getTimestamp(false) + ".txt"
+	err = csvConverter.WriteFile(hostsPath)
 	handleError(err)
 	fmt.Println("Sorting...")
-	_, err = exec.Command("sort", "-o", path, path).Output()
+	_, err = exec.Command("sort", "-o", hostsPath, hostsPath).Output()
 	handleError(err)
 
-	var sonar string = "output/portscan/sonar/sonar-" + port + ".txt"
-	var outpath string = "output/portscan/" + port + "-" + getTimestamp(false) + ".txt"
-	cmd := exec.Command("comm", "-12", sonar, path)
-	out, err := os.Create(outpath)
-	handleError(err)
-	defer out.Close()
-	cmd.Stdout = out
+	for _, url := range urls {
+		split := strings.Split(url, "_")
+		port := split[len(split) - 1]
 
-	err = cmd.Start()
-	handleError(err)
-	cmd.Wait()
-	fmt.Println("Successfully exported! See " + outpath)
+		// Download Sonar data for url
+		fmt.Println("Starting port scan for port " + port + " using " + url)
+		_, err := exec.Command("/bin/sh", "prepare_files.sh", url, port).Output()
+		handleError(err)
 
-	file, err := os.Open(outpath)
-	handleError(err)
-	defer file.Close()
+		var sonarPath string = "output/portscan/sonar/" + port + ".txt"
+		var outpath string = "output/portscan/" + port + "-" + getTimestamp(false) + ".txt"
+		cmd := exec.Command("comm", "-12", sonarPath, hostsPath)
+		out, err := os.Create(outpath)
+		handleError(err)
+		defer out.Close()
+		cmd.Stdout = out
 
-	scanner := bufio.NewScanner(file)
-	var ipsArray []string
-	var portsArray []string
-	for scanner.Scan() {
-		ipsArray = append(ipsArray, fmt.Sprintf("'%s'", scanner.Text()))
-		portsArray = append(portsArray, fmt.Sprintf("'%s'", ports))
+		err = cmd.Start()
+		handleError(err)
+		cmd.Wait()
+		fmt.Println("Files successfully compared! See " + outpath)
+
+		file, err := os.Open(outpath)
+		handleError(err)
+
+		scanner := bufio.NewScanner(file)
+		var ipsArray []string
+		var portsArray []string
+		for scanner.Scan() {
+			ipsArray = append(ipsArray, fmt.Sprintf("'%s'", scanner.Text()))
+			portsArray = append(portsArray, fmt.Sprintf("'%s'", port))
+		}
+		file.Close()
+
+		fmt.Println(fmt.Sprintf("Uploading %d found open ports to db...", len(ipsArray)))
+
+		// Please excuse this horrific UPSERT query for the time being, there's no easy way to do it in go.
+		query = "UPDATE \"Domains\" SET ports = \"Domains\".ports || ',' || data_table.ports FROM (SELECT unnest(array[" + strings.Join(ipsArray[:], ",") + "]) as ip, unnest(array[" + strings.Join(portsArray[:], ",") + "]) as ports) as data_table where \"Domains\".ip = data_table.ip AND strpos(\"Domains\".ports, data_table.ports) = 0;"
+
+		_, err = db.Exec(query)
+		handleError(err)
+
+		err = os.Remove(sonarPath)
+		handleError(err)
+
+		err = os.Remove(outpath)
+		handleError(err)
+
+		fmt.Println("Done scanning ports for port " + port + " using " + url)
 	}
 
-	fmt.Println("Uploading to db...")
+	fmt.Println("Finished port scan for " + strings.Join(urls,","))
 
-	// Please excuse this horrific UPSERT query for the time being, there's no easy way to do it in go.
-	query = "UPDATE \"Domains\" SET ports = \"Domains\".ports || ',' || data_table.ports FROM (SELECT unnest(array[" + strings.Join(ipsArray[:], ",") + "]) as ip, unnest(array[" + strings.Join(portsArray[:], ",") + "]) as ports) as data_table where \"Domains\".ip = data_table.ip AND strpos(\"Domains\".ports, data_table.ports) = 0;"
-
-	_, err = db.Exec(query)
+	err = os.Remove(hostsPath)
 	handleError(err)
-
-	fmt.Println("Done!")
 
 }

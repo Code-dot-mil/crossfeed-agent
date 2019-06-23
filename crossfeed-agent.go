@@ -28,21 +28,23 @@ func main() {
 
 	usage := `Crossfeed agent. Used to execute backend scans on a cron job. Scans are pushed to remote crossfeed database.
 
+Examples:
+crossfeed-agent scanPorts 2019-05-20-1558346873-https_get_443 443
+
 Usage:
-  crossfeed-agent run <command> [<subcommand>] [--ports=<p>]
+  crossfeed-agent <command> <args>...
   crossfeed-agent -h | --help
   crossfeed-agent --version
 
 Options:
   -h --help     Show this screen.
-  -p --ports=<p>    port to scan
   --version     Show version.`
 
 	arguments, _ := docopt.ParseDoc(usage)
-	if arguments["run"].(bool) {
+	if hasKey(arguments, "<command>") {
 		switch arguments["<command>"].(string) {
 		case "scanPorts":
-			scanPorts(arguments)
+			scanPorts(getArgs(arguments))
 		default:
 			fmt.Println("Command not found: " + arguments["<command>"].(string))
 		}
