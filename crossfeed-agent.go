@@ -3,14 +3,29 @@ package main
 import (
 	"fmt"
 	"github.com/docopt/docopt-go"
+	"github.com/tkanos/gonfig"
 	_ "github.com/lib/pq"
 )
 
-var psqlInfo string = fmt.Sprintf("host=%s port=%d user=%s "+
-	"password=%s dbname=%s sslmode=disable",
-	host, port, user, password, dbname)
+type Configuration struct {
+    Host              string
+    Port              string
+    User              string
+    Password          string
+    Dbname            string
+}
+
+var config Configuration
+
+var psqlInfo string
 
 func main() {
+	config := Configuration{}
+
+	err := gonfig.GetConf("config.json", &config)
+	handleError(err)
+	psqlInfo = fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable", config.Host, config.Port, config.User, config.Password, config.Dbname)
+
 	usage := `Crossfeed agent. Used to execute backend scans on a cron job. Scans are pushed to remote crossfeed database.
 
 Usage:
