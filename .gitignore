@@ -1,0 +1,6 @@
+
+.DS_Store
+config.go
+*/.DS_STORE
+output/*
+crossfeed-agent
