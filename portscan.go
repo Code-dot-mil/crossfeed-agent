@@ -18,6 +18,7 @@ type Domain struct {
 }
 
 func scanPorts(args []string) {
+	log.SetPrefix("[portscan] ")
 	if len(args) < 1 {
 		log.Fatal("Please provide the project sonar url")
 	}

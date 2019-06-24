@@ -14,6 +14,11 @@ func handleError(err error) {
 
 const layout = "2006-01-02"
 
+func getMonth() string {
+	t := time.Now()
+	return fmt.Sprintf("%s", t.Format("2006-01"))
+}
+
 func getTimestamp(detailed bool) string {
 	t := time.Now()
 	if detailed {
@@ -33,4 +38,13 @@ func getArgs(arguments map[string]interface{}) []string {
 		log.Fatal("Please provide args.")
 	}
 	return arguments["<args>"].([]string)
+}
+
+func sliceContains(slice []string, str string) bool {
+	for i := range slice {
+    	if slice[i] == str {
+        	return true
+        }
+    }
+    return false
 }
