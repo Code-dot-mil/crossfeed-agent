@@ -62,6 +62,8 @@ Options:
 			scanPorts(getArgs(arguments))
 		case "fetchHosts":
 			fetchHosts(getArgs(arguments))
+		case "subjack":
+			subjack(getArgs(arguments))
 		case "spawner":
 			initSpawner(getArgs(arguments))
 		case "enqueue":
