@@ -1,3 +1,5 @@
+
+
 package main
 
 import (
@@ -8,14 +10,18 @@ import (
 	"os/exec"
 	"fmt"
 	"strings"
+	"path"
 
 	"crossfeed-agent/webanalyze"
 )
 
-const(
-	hostsPath = "output/hostscanner/hosts.txt"
-	pathsPath = "output/hostscanner/paths.txt"
-	outPath   = "output/hostscanner/megoutput/"
+var(
+	scanID = getTimestamp(true)
+	rootPath = "output/hostscanner/" + scanID + "/"
+	hostsPath = rootPath + "hosts.txt"
+	pathsPath = rootPath + "/paths.txt"
+	outPath   = rootPath + "/megoutput/"
+	configPath = "config/hostscanner/"
 	wappalyzeAppsPath = "output/hostscanner/apps.json"
 )
 
@@ -29,10 +35,8 @@ func fetchHosts(args []string) {
 		initWappalyzer()
 	case "scan":
 		initHostScan(args[1])
-	case "parseResults":
-		parseScanResults()
 	default:
-		fmt.Println("Subcommand not found: " + args[0])
+		log.Fatal("Subcommand not found: " + args[0])
 	}
 }
 
@@ -41,7 +45,16 @@ func initHostScan(input string) {
 	if strings.HasPrefix(input, "/") { // Treat as single path
 		paths = append(paths, input)
 	} else { // Find input config file
+	    file, err := os.Open(path.Join(configPath, strings.Replace(input, ".", "", -1)))
+	    if err != nil {
+	        log.Fatal("Unable to find config file " + input)
+	    }
+	    defer file.Close()
 
+	    lineScanner := bufio.NewScanner(file)
+	    for lineScanner.Scan() {
+	    	paths = append(paths, lineScanner.Text())
+	    }
 	}
 
 	db, err := sql.Open("postgres", psqlInfo)
@@ -54,6 +67,9 @@ func initHostScan(input string) {
 	rows, err := db.Query(query)
 	handleError(err)
 	defer rows.Close()
+
+	_, err = exec.Command("mkdir", rootPath).Output()
+    handleError(err)
 
 	f, err := os.Create(hostsPath)
     handleError(err)
@@ -85,16 +101,12 @@ func initHostScan(input string) {
 
 	f.Close()
 
-
 	// start the command after having set up the pipe
 
 	log.Println(fmt.Sprintf("Beginning host scan for %d paths on %d domains", len(paths), count))
 
 	cmd := exec.Command("meg", "-c", "50", "-v", pathsPath, hostsPath, outPath)
 	stdout, err := cmd.StdoutPipe()
-	// handleError(err)
-	// stderr, err := cmd.StderrPipe()
-	// handleError(err)
 	err = cmd.Start()
 	handleError(err)
 
@@ -105,31 +117,14 @@ func initHostScan(input string) {
 		log.Println(fmt.Sprintf("(%d/%d) %s", cur, count, in.Text()))
 	}
 
-	// outIn := bufio.NewScanner(stdout)
-	// errIn := bufio.NewScanner(stderr)
-	// cur := 0
-	// for {
-	// 	cont := false
-	// 	if errIn.Scan() {
-	// 		cur++
-	// 		log.Println(fmt.Sprintf("(%d/%d) %s", cur, count, errIn.Text()))
-	// 		cont = true
-	// 	}
-	// 	if outIn.Scan() {
-	//     	cur++
-	// 		log.Println(fmt.Sprintf("(%d/%d) %s", cur, count, outIn.Text()))
-	//     	cont = true
-	// 	}
-	// 	if !cont {
-	// 		break
-	// 	}
-	// }
-
 	err = in.Err()
 	handleError(err)
 
-
 	log.Println(fmt.Sprintf("Finished host scan for %d paths on %d domains", len(paths), count))
+
+	if (input == "/") { // Wappalyze results if index page
+		wappalyzeResults()
+	}
 
 }
 
@@ -139,7 +134,7 @@ func initWappalyzer() {
 	log.Println("app definition file updated from ", webanalyze.WappalyzerURL)
 }
 
-func parseScanResults() {
+func wappalyzeResults() {
 
 	db, err := sql.Open("postgres", psqlInfo)
 	handleError(err)
@@ -150,14 +145,12 @@ func parseScanResults() {
 	workers := 4
 	crawlCount := 0
 	searchSubdomain := false
-	file, err := os.Open("output/hostscanner/megoutput/index")
+	file, err := os.Open(path.Join(outPath, "index"))
 	handleError(err)
 	defer file.Close()
 
 	results, err := webanalyze.Init(workers, file, wappalyzeAppsPath, crawlCount, searchSubdomain)
 	handleError(err)
-
-	log.Printf("Scanning with %v workers.", workers)
 
 	var hostsArray []string
 	var servicesArray []string
@@ -188,7 +181,7 @@ func parseScanResults() {
 				results += ", "
 			}
 
-			results += fmt.Sprintf("%v %v (%v)", a.AppName, a.Version, strings.Join(categories, " "))
+			results += fmt.Sprintf("%v %v", a.AppName, a.Version)
 		}
 
 		results = strings.Replace(results, "'", "", -1)
