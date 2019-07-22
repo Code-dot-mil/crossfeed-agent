@@ -11,15 +11,16 @@ import (
 )
 
 type Configuration struct {
-    Host              string
-    Port              string
-    User              string
-    Password          string
-    Dbname            string
-    LogPath           string
-    Debug             bool
-    BeanstalkHost     string
-    BeanstalkPollRate int
+    DB_HOST              string
+    DB_PORT              string
+    DB_USER              string
+    DB_PASSWORD          string
+    DB_NAME              string
+    LOG_PATH             string
+    DEBUG                  bool
+    BEANSTALK_HOST       string
+    BEANSTALK_POLL_RATE     int
+    SONAR_API_KEY        string
 }
 
 var config Configuration
@@ -30,10 +31,10 @@ func main() {
 
 	err := gonfig.GetConf("config.json", &config)
 	handleError(err)
-	psqlInfo = fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable", config.Host, config.Port, config.User, config.Password, config.Dbname)
+	psqlInfo = fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable", config.DB_HOST, config.DB_PORT, config.DB_USER, config.DB_PASSWORD, config.DB_NAME)
 
-	if !config.Debug {
-		logPath := config.LogPath + getMonth() + ".txt"
+	if !config.DEBUG {
+		logPath := config.LOG_PATH + getMonth() + ".txt"
 		f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 		handleError(err)
 		defer f.Close()
@@ -58,9 +59,9 @@ Options:
 	arguments, _ := docopt.ParseDoc(usage)
 	if hasKey(arguments, "<command>") {
 		switch arguments["<command>"].(string) {
-		case "scanPorts":
+		case "scan-ports":
 			scanPorts(getArgs(arguments))
-		case "fetchHosts":
+		case "scan-hosts":
 			fetchHosts(getArgs(arguments))
 		case "subjack":
 			subjack(getArgs(arguments))

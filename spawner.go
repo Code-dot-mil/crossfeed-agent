@@ -20,11 +20,11 @@ func initSpawner(arguments []string) {
 	handleError(err)
 
 	log.SetPrefix("[spawner] ")
-	client, err := beanstalk.Dial("tcp", config.BeanstalkHost)
+	client, err := beanstalk.Dial("tcp", config.BEANSTALK_HOST)
 	handleError(err)
 	log.Println("Spawner initiated. Waiting for next job.")
 	for {
-		id, body, err := client.Reserve(time.Duration(config.BeanstalkPollRate) * time.Second)
+		id, body, err := client.Reserve(time.Duration(config.BEANSTALK_POLL_RATE) * time.Second)
 		if err != nil {
 			if !strings.Contains(err.Error(), "timeout") { // Don't print if it's a timeout
 				log.Println("Error reserving job: " + err.Error())
@@ -79,7 +79,7 @@ func initSpawner(arguments []string) {
 // Enqueues a job on the job queue
 func enqueueJob(args []string) {
 	log.SetPrefix("[enqueue] ")
-	client, err := beanstalk.Dial("tcp", config.BeanstalkHost)
+	client, err := beanstalk.Dial("tcp", config.BEANSTALK_HOST)
 	handleError(err)
 	command := strings.Join(args, " ")
 	var priority uint32 = 1

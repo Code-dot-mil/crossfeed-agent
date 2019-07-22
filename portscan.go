@@ -17,15 +17,67 @@ type Domain struct {
 	ports string
 }
 
+type SonarStudy struct {
+    Name string
+    Uniqid string
+    Created_at string
+    Sonarfile_set []string
+}
+
+type DownloadUrl struct {
+	Url string
+}
+
+type ScanInfo struct {
+	Port string
+	DownloadUrl string
+}
+
 func scanPorts(args []string) {
 	log.SetPrefix("[portscan] ")
 	if len(args) < 1 {
-		log.Fatal("Please provide the project sonar url")
+		log.Fatal("Please provide the ports to scan")
 	}
-	initPortScan(strings.Split(args[0], ","))
+	scanLatestResults(strings.Split(args[0], ","))
 }
 
-func initPortScan(urls []string) {
+func scanLatestResults(ports []string) {
+	var availableFiles SonarStudy
+	fetchExternalAPI("https://us.api.insight.rapid7.com/opendata/studies/sonar.tcp/",
+		map[string]string{
+			"X-Api-Key": config.SONAR_API_KEY,
+		},
+		&availableFiles)
+
+	scans := make([]ScanInfo, len(ports))
+
+	for i, port := range ports {
+		for _, file := range availableFiles.Sonarfile_set {
+			if strings.HasSuffix(file, fmt.Sprintf("_%s.csv.gz", port))	{
+				var downloadUrl DownloadUrl
+				fetchExternalAPI("https://us.api.insight.rapid7.com/opendata/studies/sonar.tcp/" + file + "/download/",
+					map[string]string{
+						"X-Api-Key": config.SONAR_API_KEY,
+					},
+					&downloadUrl)
+				scans[i] = ScanInfo{
+					Port: port,
+					DownloadUrl: downloadUrl.Url,
+				}
+				break
+			}
+		}
+	}
+
+	initPortScan(scans)
+}
+
+func initPortScan(scans []ScanInfo) {
+	var (
+		scanID = getTimestamp(true)
+		hostsPath = "output/portscan/ips-" + scanID + ".txt"
+	)
+
 	db, err := sql.Open("postgres", psqlInfo)
 	handleError(err)
 	defer db.Close()
@@ -41,24 +93,26 @@ func initPortScan(urls []string) {
 	csvConverter := sqltocsv.New(rows)
 	csvConverter.WriteHeaders = false
 
-	var hostsPath string = "output/portscan/ips-" + getTimestamp(false) + ".txt"
+	
 	err = csvConverter.WriteFile(hostsPath)
 	handleError(err)
 	log.Println("Sorting...")
 	_, err = exec.Command("sort", "-o", hostsPath, hostsPath).Output()
 	handleError(err)
 
-	for _, url := range urls {
-		split := strings.Split(url, "_")
-		port := split[len(split) - 1]
-
-		// Download Sonar data for url
-		log.Println("Starting port scan for port " + port + " using " + url)
-		_, err := exec.Command("/bin/sh", "prepare_files.sh", url, port).Output()
-		handleError(err)
+	for _, scan := range scans {
+		port := scan.Port
+		downloadUrl := scan.DownloadUrl
 
 		var sonarPath string = "output/portscan/sonar/" + port + ".txt"
-		var outpath string = "output/portscan/" + port + "-" + getTimestamp(false) + ".txt"
+		var outpath string = "output/portscan/" + port + "-" + scanID + ".txt"
+
+		// Download Sonar data for url
+		log.Println("Starting port scan for port " + port + " using " + downloadUrl)
+		_, err := exec.Command("/bin/sh", "prepare_files.sh", downloadUrl, port).Output()
+		handleError(err)
+
+		// Compare lines in both sorted files
 		cmd := exec.Command("comm", "-12", sonarPath, hostsPath)
 		out, err := os.Create(outpath)
 		handleError(err)
@@ -98,10 +152,10 @@ func initPortScan(urls []string) {
 		err = os.Remove(outpath)
 		handleError(err)
 
-		log.Println("Done scanning ports for port " + port + " using " + url)
+		log.Println(fmt.Sprintf("Done scanning ports for port %s using %s", port, downloadUrl))
 	}
 
-	log.Println("Finished port scan for " + strings.Join(urls,","))
+	log.Println(fmt.Sprintf("Finished port scan for %d ports.", len(scans)))
 
 	err = os.Remove(hostsPath)
 	handleError(err)

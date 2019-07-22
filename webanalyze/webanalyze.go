@@ -83,8 +83,9 @@ func Init(workers int, hosts io.Reader, appsFile string, crawlCount int, searchS
 		    file, err := os.Open(path)
 		    if err != nil {
 		        log.Println("Error reading " + path)
+		        file.Close()
+		        continue
 		    }
-		    defer file.Close()
 
 		    headers := make(map[string][]string)
 		    cookies := make(map[string]string)
@@ -118,6 +119,9 @@ func Init(workers int, hosts io.Reader, appsFile string, crawlCount int, searchS
 
 		    	if strings.HasPrefix(first, "Set-Cookie") { //parse as cookie
 		    		splitCookie := strings.SplitN(second, "=", 2)
+		    		if len(splitCookie) < 2 {
+		    			continue
+		    		}
 		    		key := splitCookie[0]
 		    		value := strings.Split(splitCookie[1], ";")[0]
 		    		cookies[key] = value
@@ -130,8 +134,11 @@ func Init(workers int, hosts io.Reader, appsFile string, crawlCount int, searchS
 		    	body += lineScanner.Text()
 		    }
 
+		    file.Close()
+
 		    if err := scanner.Err(); err != nil {
 		        log.Println("Error reading " + path)
+		        continue
 		    }
 
 			wa.schedule(NewOfflineJob(url, body, headers, cookies))

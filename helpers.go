@@ -3,7 +3,10 @@ package main
 import (
 	"fmt"
 	"time"
+	"encoding/json"
 	"log"
+	"net/http"
+	"io/ioutil"
 )
 
 func handleError(err error) {
@@ -47,4 +50,25 @@ func sliceContains(slice []string, str string) bool {
         }
     }
     return false
+}
+
+func fetchExternalAPI(url string, headers map[string]string, result interface{}) {
+	client := http.Client{
+		Timeout: time.Second * 10,
+	}
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	handleError(err)
+
+	for key, value := range headers { 
+		req.Header.Set(key, value)
+	}
+
+	res, err := client.Do(req)
+	handleError(err)
+
+	body, err := ioutil.ReadAll(res.Body)
+	handleError(err)
+
+	err = json.Unmarshal(body, &result)
+	handleError(err)
 }
