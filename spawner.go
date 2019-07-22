@@ -57,7 +57,7 @@ func initSpawner(arguments []string) {
 
 		args := strings.Split(command, " ")
 		cmd := args[0]
-		allowedCommands := []string {"scanPorts", "fetchHosts", "subjack"}
+		allowedCommands := []string {"scan-ports", "scan-hosts", "subjack"}
 		if !sliceContains(allowedCommands, cmd) {
 			log.Println("Could not parse command: " + cmd)
 			continue

@@ -7,6 +7,7 @@ import (
 	"log"
 	"github.com/docopt/docopt-go"
 	"github.com/tkanos/gonfig"
+	"path"
 	_ "github.com/lib/pq"
 )
 
@@ -34,7 +35,7 @@ func main() {
 	psqlInfo = fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable", config.DB_HOST, config.DB_PORT, config.DB_USER, config.DB_PASSWORD, config.DB_NAME)
 
 	if !config.DEBUG {
-		logPath := config.LOG_PATH + getMonth() + ".txt"
+		logPath := path.Join(config.LOG_PATH, getMonth() + ".txt")
 		f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 		handleError(err)
 		defer f.Close()
