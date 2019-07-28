@@ -1,0 +1,12 @@
+{
+	"DB_USER": "user",
+	"DB_PASSWORD": "password",
+	"DB_NAME": "crossfeed",
+	"DB_HOST": "localhost",
+	"DB_PORT": "5432",
+	"LOG_PATH": "/logs",
+	"DEBUG": false,
+	"BEANSTALK_HOST": "127.0.0.1:11300",
+	"BEANSTALK_POLL_RATE": 5,
+	"SONAR_API_KEY": ""
+}

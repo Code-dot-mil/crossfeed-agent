@@ -1,31 +1,33 @@
 package main
 
 import (
+	"database/sql"
 	"fmt"
-	"os"
+	"github.com/docopt/docopt-go"
+	_ "github.com/lib/pq"
+	"github.com/tkanos/gonfig"
 	"io"
 	"log"
-	"github.com/docopt/docopt-go"
-	"github.com/tkanos/gonfig"
+	"os"
 	"path"
-	_ "github.com/lib/pq"
 )
 
 type Configuration struct {
-    DB_HOST              string
-    DB_PORT              string
-    DB_USER              string
-    DB_PASSWORD          string
-    DB_NAME              string
-    LOG_PATH             string
-    DEBUG                  bool
-    BEANSTALK_HOST       string
-    BEANSTALK_POLL_RATE     int
-    SONAR_API_KEY        string
+	DB_HOST             string
+	DB_PORT             string
+	DB_USER             string
+	DB_PASSWORD         string
+	DB_NAME             string
+	LOG_PATH            string
+	DEBUG               bool
+	BEANSTALK_HOST      string
+	BEANSTALK_POLL_RATE int
+	SONAR_API_KEY       string
 }
 
 var config Configuration
 var psqlInfo string
+var db *sql.DB
 
 func main() {
 	config = Configuration{}
@@ -35,13 +37,18 @@ func main() {
 	psqlInfo = fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable", config.DB_HOST, config.DB_PORT, config.DB_USER, config.DB_PASSWORD, config.DB_NAME)
 
 	if !config.DEBUG {
-		logPath := path.Join(config.LOG_PATH, getMonth() + ".txt")
+		logPath := path.Join(config.LOG_PATH, getMonth()+".txt")
 		f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 		handleError(err)
 		defer f.Close()
 		mw := io.MultiWriter(os.Stdout, f)
 		log.SetOutput(mw)
 	}
+
+	db, err = sql.Open("postgres", psqlInfo)
+	handleError(err)
+	err = db.Ping()
+	handleError(err)
 
 	usage := `Crossfeed agent. Used to execute backend scans on a cron job. Scans are pushed to remote crossfeed database.
 

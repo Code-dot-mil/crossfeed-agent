@@ -1,27 +1,24 @@
-
-
 package main
 
 import (
 	"bufio"
-	"database/sql"
+	"fmt"
 	"log"
 	"os"
 	"os/exec"
-	"fmt"
-	"strings"
 	"path"
+	"strings"
 
 	"crossfeed-agent/webanalyze"
 )
 
-var(
-	scanID = getTimestamp(true)
-	rootPath = "output/hostscanner/" + scanID + "/"
-	hostsPath = rootPath + "hosts.txt"
-	pathsPath = rootPath + "/paths.txt"
-	outPath   = rootPath + "/megoutput/"
-	configPath = "config/hostscanner/"
+var (
+	scanID            = getTimestamp(true)
+	rootPath          = "output/hostscanner/" + scanID + "/"
+	hostsPath         = rootPath + "hosts.txt"
+	pathsPath         = rootPath + "/paths.txt"
+	outPath           = rootPath + "/megoutput/"
+	configPath        = "config/hostscanner/"
 	wappalyzeAppsPath = "output/hostscanner/apps.json"
 )
 
@@ -33,35 +30,30 @@ func fetchHosts(args []string) {
 	switch args[0] {
 	case "initWappalyzer":
 		initWappalyzer()
-	case "scan":
-		initHostScan(args[1])
+	case "wappalyzeResults":
+		wappalyzeResults(args[1])
 	default:
-		log.Fatal("Subcommand not found: " + args[0])
+		initHostScan(args[0], args[1])
 	}
 }
 
-func initHostScan(input string) {
+func initHostScan(input string, taskID string) {
 	var paths []string
+
 	if strings.HasPrefix(input, "/") { // Treat as single path
 		paths = append(paths, input)
 	} else { // Find input config file
-	    file, err := os.Open(path.Join(configPath, strings.Replace(input, ".", "", -1)))
-	    if err != nil {
-	        log.Fatal("Unable to find config file " + input)
-	    }
-	    defer file.Close()
+		file, err := os.Open(path.Join(configPath, strings.Replace(input, ".", "", -1)))
+		if err != nil {
+			log.Fatal("Unable to find config file " + input)
+		}
+		defer file.Close()
 
-	    lineScanner := bufio.NewScanner(file)
-	    for lineScanner.Scan() {
-	    	paths = append(paths, lineScanner.Text())
-	    }
+		lineScanner := bufio.NewScanner(file)
+		for lineScanner.Scan() {
+			paths = append(paths, lineScanner.Text())
+		}
 	}
-
-	db, err := sql.Open("postgres", psqlInfo)
-	handleError(err)
-	defer db.Close()
-	err = db.Ping()
-	handleError(err)
 
 	query := `SELECT name, ports FROM "Domains" WHERE ports LIKE '%80%' OR ports LIKE '%443%';`
 	rows, err := db.Query(query)
@@ -69,10 +61,10 @@ func initHostScan(input string) {
 	defer rows.Close()
 
 	_, err = exec.Command("mkdir", rootPath).Output()
-    handleError(err)
+	handleError(err)
 
 	f, err := os.Create(hostsPath)
-    handleError(err)
+	handleError(err)
 
 	var name string
 	var ports string
@@ -92,7 +84,7 @@ func initHostScan(input string) {
 	f.Close()
 
 	f, err = os.Create(pathsPath)
-    handleError(err)
+	handleError(err)
 
 	for _, path := range paths {
 		_, err = f.WriteString(path + "\n")
@@ -105,7 +97,7 @@ func initHostScan(input string) {
 
 	log.Println(fmt.Sprintf("Beginning host scan for %d paths on %d domains", len(paths), count))
 
-	cmd := exec.Command("meg", "-c", "50", "-v", pathsPath, hostsPath, outPath)
+	cmd := exec.Command("meg", "-c", "30", "-v", pathsPath, hostsPath, outPath)
 	stdout, err := cmd.StdoutPipe()
 	err = cmd.Start()
 	handleError(err)
@@ -114,6 +106,7 @@ func initHostScan(input string) {
 	in := bufio.NewScanner(stdout)
 	for in.Scan() {
 		cur++
+		updateTaskPercentage(taskID, (100*cur)/count)
 		log.Println(fmt.Sprintf("(%d/%d) %s", cur, count, in.Text()))
 	}
 
@@ -122,8 +115,8 @@ func initHostScan(input string) {
 
 	log.Println(fmt.Sprintf("Finished host scan for %d paths on %d domains", len(paths), count))
 
-	if (input == "/") { // Wappalyze results if index page
-		wappalyzeResults()
+	if input == "/" { // Wappalyze results if index page
+		wappalyzeResults(scanID)
 	}
 
 }
@@ -134,13 +127,9 @@ func initWappalyzer() {
 	log.Println("app definition file updated from ", webanalyze.WappalyzerURL)
 }
 
-func wappalyzeResults() {
-
-	db, err := sql.Open("postgres", psqlInfo)
-	handleError(err)
-	defer db.Close()
-	err = db.Ping()
-	handleError(err)
+func wappalyzeResults(scanID string) {
+	rootPath = "output/hostscanner/" + scanID + "/"
+	outPath = rootPath + "/megoutput/"
 
 	workers := 4
 	crawlCount := 0
@@ -181,13 +170,16 @@ func wappalyzeResults() {
 				results += ", "
 			}
 
-			results += fmt.Sprintf("%v %v", a.AppName, a.Version)
+			results += a.AppName
+
+			if a.Version != "" {
+				results += " " + a.Version
+			}
 		}
 
 		results = strings.Replace(results, "'", "", -1)
 		servicesArray = append(servicesArray, fmt.Sprintf("'%s'", results))
 	}
-
 
 	log.Println(fmt.Sprintf("Uploading %d found services to db...", len(hostsArray)))
 
@@ -199,6 +191,5 @@ func wappalyzeResults() {
 	handleError(err)
 
 	log.Println("Done parsing scan results")
-
 
 }

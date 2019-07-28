@@ -1,16 +1,16 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
 	"os/exec"
-	"time"
 	"strings"
-	"encoding/json"
+	"time"
 
-	"github.com/beanstalkd/go-beanstalk"
 	"github.com/alessio/shellescape"
+	"github.com/beanstalkd/go-beanstalk"
 )
 
 // Background process to consume and initiate jobs from queue
@@ -41,23 +41,25 @@ func initSpawner(arguments []string) {
 		command := string(body)
 		if strings.HasPrefix(command, "{") { // is json
 			var dat map[string]interface{}
-		    if err := json.Unmarshal(body, &dat); err != nil {
-		        log.Println("Error parsing json: " + err.Error())
-		        continue
-		    }
-		    cmd, exists := dat["payload"]
-		    if !exists {
-		        log.Println("Invalid input provided: " + string(body))
-		        continue
-		    }
-		    command = cmd.(string)
+			if err := json.Unmarshal(body, &dat); err != nil {
+				log.Println("Error parsing json: " + err.Error())
+				continue
+			}
+			cmd, exists := dat["payload"]
+			if !exists {
+				log.Println("Invalid input provided: " + string(body))
+				continue
+			}
+			command = cmd.(string)
 		}
 
-		log.Println(fmt.Sprintf("Spawning job: %d with command %s",  id, command))
+		log.Println(fmt.Sprintf("Spawning job: %d with command %s", id, command))
+
+		taskID := initStatusTracker(command)
 
 		args := strings.Split(command, " ")
 		cmd := args[0]
-		allowedCommands := []string {"scan-ports", "scan-hosts", "subjack"}
+		allowedCommands := []string{"scan-ports", "scan-hosts", "subjack"}
 		if !sliceContains(allowedCommands, cmd) {
 			log.Println("Could not parse command: " + cmd)
 			continue
@@ -66,9 +68,14 @@ func initSpawner(arguments []string) {
 			args[i+1] = shellescape.Quote(args[i+1])
 		}
 
-		_, err = exec.Command(currentDir + "/crossfeed-agent", args...).Output()
+		args = append(args, fmt.Sprintf("%d", taskID)) // the taskID is always the last argument
+
+		_, err = exec.Command(currentDir+"/crossfeed-agent", args...).Output()
 		if err != nil {
 			log.Println("Executing job failed: " + err.Error())
+			updateTaskStatus(taskID, "failed")
+		} else {
+			updateTaskStatus(taskID, "finished")
 		}
 
 		log.Println(fmt.Sprintf("Finished job: %d", id))

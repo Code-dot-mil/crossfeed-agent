@@ -1,13 +1,11 @@
 package main
 
 import (
-	"database/sql"
-	"log"
+	"bufio"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
-	"bufio"
-	"github.com/joho/sqltocsv"
 )
 
 func subjack(args []string) {
@@ -16,27 +14,15 @@ func subjack(args []string) {
 }
 
 func initSubjack(args []string) {
-	db, err := sql.Open("postgres", psqlInfo)
-	handleError(err)
-	defer db.Close()
-	err = db.Ping()
-	handleError(err)
-
 	// Fetch all hosts, for now restrict to live hosts (80/443)
 	var count int
 	row := db.QueryRow(`SELECT COUNT(*) FROM "Domains" WHERE ports LIKE '%80%' OR ports LIKE '%443%';`)
-	err = row.Scan(&count)
+	err := row.Scan(&count)
 	handleError(err)
 
 	query := `SELECT name FROM "Domains" WHERE ports LIKE '%80%' OR ports LIKE '%443%';`
-	rows, err := db.Query(query)
-	handleError(err)
-	csvConverter := sqltocsv.New(rows)
-	csvConverter.WriteHeaders = false
-
-	var hostsPath string = "output/subjack/hosts.txt"
-	err = csvConverter.WriteFile(hostsPath)
-	handleError(err)
+	hostsPath := "output/subjack/hosts.txt"
+	writeQueryToFile(query, hostsPath)
 
 	log.Println(fmt.Sprintf("Beginning subjack scan on %d domains.", count))
 

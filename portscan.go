@@ -2,9 +2,7 @@ package main
 
 import (
 	"bufio"
-	"database/sql"
 	"fmt"
-	"github.com/joho/sqltocsv"
 	"log"
 	"os"
 	"os/exec"
@@ -18,10 +16,10 @@ type Domain struct {
 }
 
 type SonarStudy struct {
-    Name string
-    Uniqid string
-    Created_at string
-    Sonarfile_set []string
+	Name          string
+	Uniqid        string
+	Created_at    string
+	Sonarfile_set []string
 }
 
 type DownloadUrl struct {
@@ -29,7 +27,7 @@ type DownloadUrl struct {
 }
 
 type ScanInfo struct {
-	Port string
+	Port        string
 	DownloadUrl string
 }
 
@@ -38,10 +36,10 @@ func scanPorts(args []string) {
 	if len(args) < 1 {
 		log.Fatal("Please provide the ports to scan")
 	}
-	scanLatestResults(strings.Split(args[0], ","))
+	scanLatestResults(strings.Split(args[0], ","), args[1])
 }
 
-func scanLatestResults(ports []string) {
+func scanLatestResults(ports []string, taskID string) {
 	var availableFiles SonarStudy
 	fetchExternalAPI("https://us.api.insight.rapid7.com/opendata/studies/sonar.tcp/",
 		map[string]string{
@@ -53,15 +51,15 @@ func scanLatestResults(ports []string) {
 
 	for i, port := range ports {
 		for _, file := range availableFiles.Sonarfile_set {
-			if strings.HasSuffix(file, fmt.Sprintf("_%s.csv.gz", port))	{
+			if strings.HasSuffix(file, fmt.Sprintf("_%s.csv.gz", port)) {
 				var downloadUrl DownloadUrl
-				fetchExternalAPI("https://us.api.insight.rapid7.com/opendata/studies/sonar.tcp/" + file + "/download/",
+				fetchExternalAPI("https://us.api.insight.rapid7.com/opendata/studies/sonar.tcp/"+file+"/download/",
 					map[string]string{
 						"X-Api-Key": config.SONAR_API_KEY,
 					},
 					&downloadUrl)
 				scans[i] = ScanInfo{
-					Port: port,
+					Port:        port,
 					DownloadUrl: downloadUrl.Url,
 				}
 				break
@@ -69,38 +67,40 @@ func scanLatestResults(ports []string) {
 		}
 	}
 
-	initPortScan(scans)
+	initPortScan(scans, taskID)
 }
 
-func initPortScan(scans []ScanInfo) {
+func initPortScan(scans []ScanInfo, taskID string) {
 	var (
-		scanID = getTimestamp(true)
+		scanID    = getTimestamp(true)
 		hostsPath = "output/portscan/ips-" + scanID + ".txt"
 	)
-
-	db, err := sql.Open("postgres", psqlInfo)
-	handleError(err)
-	defer db.Close()
-	err = db.Ping()
-	handleError(err)
 
 	log.Println("Exporting hosts to file...")
 
 	// Fetch all ip addresses from db and sort
 	query := `SELECT ip FROM "Domains" WHERE ip IS NOT NULL AND ip <> '';`
+	writeQueryToFile(query, hostsPath)
+
+	query = `SELECT name, ports FROM "Domains" WHERE ports LIKE '%80%' OR ports LIKE '%443%';`
 	rows, err := db.Query(query)
 	handleError(err)
-	csvConverter := sqltocsv.New(rows)
-	csvConverter.WriteHeaders = false
 
-	
-	err = csvConverter.WriteFile(hostsPath)
-	handleError(err)
+	existingPorts := make(map[string][]string)
+	var name string
+	var ports string
+	for rows.Next() {
+		err := rows.Scan(&name, &ports)
+		handleError(err)
+		existingPorts[name] = strings.Split(strings.Replace(ports, " ", "", -1), ",")
+	}
+	rows.Close()
+
 	log.Println("Sorting...")
 	_, err = exec.Command("sort", "-o", hostsPath, hostsPath).Output()
 	handleError(err)
 
-	for _, scan := range scans {
+	for index, scan := range scans {
 		port := scan.Port
 		downloadUrl := scan.DownloadUrl
 
@@ -153,6 +153,7 @@ func initPortScan(scans []ScanInfo) {
 		handleError(err)
 
 		log.Println(fmt.Sprintf("Done scanning ports for port %s using %s", port, downloadUrl))
+		updateTaskPercentage(taskID, 100*(index+1)/len(scans))
 	}
 
 	log.Println(fmt.Sprintf("Finished port scan for %d ports.", len(scans)))
