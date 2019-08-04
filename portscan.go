@@ -82,22 +82,8 @@ func initPortScan(scans []ScanInfo, taskID string) {
 	query := `SELECT ip FROM "Domains" WHERE ip IS NOT NULL AND ip <> '';`
 	writeQueryToFile(query, hostsPath)
 
-	query = `SELECT name, ports FROM "Domains" WHERE ports LIKE '%80%' OR ports LIKE '%443%';`
-	rows, err := db.Query(query)
-	handleError(err)
-
-	existingPorts := make(map[string][]string)
-	var name string
-	var ports string
-	for rows.Next() {
-		err := rows.Scan(&name, &ports)
-		handleError(err)
-		existingPorts[name] = strings.Split(strings.Replace(ports, " ", "", -1), ",")
-	}
-	rows.Close()
-
 	log.Println("Sorting...")
-	_, err = exec.Command("sort", "-o", hostsPath, hostsPath).Output()
+	_, err := exec.Command("sort", "-o", hostsPath, hostsPath).Output()
 	handleError(err)
 
 	for index, scan := range scans {
@@ -124,27 +110,51 @@ func initPortScan(scans []ScanInfo, taskID string) {
 		cmd.Wait()
 		log.Println("Files successfully compared! See " + outpath)
 
+		query := "SELECT ip FROM \"Domains\" WHERE ports LIKE '%%" + port + "%%';"
+		rows, err := db.Query(query)
+		handleError(err)
+
+		existingPorts := make(map[string]bool)
+		var ip string
+		for rows.Next() {
+			err := rows.Scan(&ip)
+			handleError(err)
+			existingPorts[ip] = true
+		}
+		rows.Close()
+
 		file, err := os.Open(outpath)
 		handleError(err)
 
 		scanner := bufio.NewScanner(file)
 		var ipsArray []string
 		var portsArray []string
+		var alertOutput []string
 		for scanner.Scan() {
-			ipsArray = append(ipsArray, fmt.Sprintf("'%s'", scanner.Text()))
+			var ip = scanner.Text()
+			if _, exists := existingPorts[ip]; exists {
+    			continue
+			}
+			ipsArray = append(ipsArray, fmt.Sprintf("'%s'", ip))
 			portsArray = append(portsArray, fmt.Sprintf("'%s'", port))
+			alertOutput = append(alertOutput, fmt.Sprintf("%s", ip))
 		}
 		file.Close()
 
-		log.Println(fmt.Sprintf("Uploading %d found open ports to db...", len(ipsArray)))
+		if (len(ipsArray) > 0) {
+			log.Println(fmt.Sprintf("Uploading %d found open ports to db...", len(ipsArray)))
 
-		// Please excuse this horrific UPSERT query for the time being, there's no easy way to do it in go.
-		query = `UPDATE "Domains" SET ports = CASE WHEN "Domains".ports IS NOT NULL AND "Domains".ports <> '' THEN "Domains".ports || ',' || data_table.ports ELSE data_table.ports END
-					FROM (SELECT unnest(array[` + strings.Join(ipsArray[:], ",") + `]) as ip, unnest(array[` + strings.Join(portsArray[:], ",") + `]) as ports)
-					as data_table where "Domains".ip = data_table.ip AND strpos("Domains".ports, data_table.ports) = 0;`
+			updateTaskOutput(fmt.Sprintf("Scan Ports (%s)", port), fmt.Sprintf("Port %s is now open for:\n%s", port, strings.Join(alertOutput, "\n")), 3)
 
-		_, err = db.Exec(query)
-		handleError(err)
+			query = `UPDATE "Domains" SET ports = CASE WHEN "Domains".ports IS NOT NULL AND "Domains".ports <> '' THEN "Domains".ports || ',' || data_table.ports ELSE data_table.ports END
+						FROM (SELECT unnest(array[` + strings.Join(ipsArray[:], ",") + `]) as ip, unnest(array[` + strings.Join(portsArray[:], ",") + `]) as ports)
+						as data_table where "Domains".ip = data_table.ip AND strpos("Domains".ports, data_table.ports) = 0;`
+
+			_, err = db.Exec(query)
+			handleError(err)
+		} else {
+			log.Println("No new ports found.")
+		}
 
 		err = os.Remove(sonarPath)
 		handleError(err)

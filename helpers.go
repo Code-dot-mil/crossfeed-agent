@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -124,7 +125,34 @@ func updateTaskStatus(id int, status string) {
 
 // Updates alerts database and sends Slack notification
 func updateTaskOutput(command string, text string, priority int) {
-	query := `INSERT INTO "Alerts" (command, text, priority) VALUES ($1, $2, $3)`
-	_, err := db.Exec(query, command)
+	query := `INSERT INTO "Alerts" (source, text, priority) VALUES ($1, $2, $3)`
+	_, err := db.Exec(query, command, text, priority)
 	handleError(err)
+
+	// Post to Slack, if url exists
+
+	if config.SLACK_WEBHOOK_URL != "" {
+		requestBody := map[string]string{
+			"text": text,
+		}
+		byteArray := new(bytes.Buffer)
+		json.NewEncoder(byteArray).Encode(requestBody)
+	    req, err := http.NewRequest("POST", config.SLACK_WEBHOOK_URL, byteArray)
+	    req.Header.Set("Content-Type", "application/json")
+
+	    client := &http.Client{}
+	    resp, err := client.Do(req)
+	    if err != nil {
+	        log.Println("Failed posting to Slack", err)
+	    }
+	    defer resp.Body.Close()
+
+	    if (resp.Status == "200 OK") {
+	    	log.Println("Successfully posted to Slack.")
+	    } else { 	
+	    	body, _ := ioutil.ReadAll(resp.Body)
+	    	log.Println("Received error from Slack: " + string(body) + resp.Status)
+	    }
+	}
+
 }

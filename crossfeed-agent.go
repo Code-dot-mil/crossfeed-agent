@@ -23,6 +23,7 @@ type Configuration struct {
 	BEANSTALK_HOST      string
 	BEANSTALK_POLL_RATE int
 	SONAR_API_KEY       string
+	SLACK_WEBHOOK_URL   string
 }
 
 var config Configuration
