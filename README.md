@@ -11,12 +11,16 @@ Installation:
 Modules created:
 
 - Port scanner. Uses Rapid7's [Project Sonar](https://www.rapid7.com/research/project-sonar/) database of internet scans to passively find open ports.
+- Host scanner, using [meg](https://github.com/tomnomnom/meg) to fetch many paths from many hosts and fingerprint using [Wappalyzer](https://github.com/haccer/subjack/tree/master/subjack)
+- Subdomain takeover scanner, using [subjack](https://github.com/haccer/subjack/), to detect improperly configured domains
+
+To be created:
+
+- Subdomain scanner using amass
+- and more
 
 Usage:
 
-This will be put on a cron job eventually. For the time being:
+1. Run `./crossfeed-agent spawner` to wait for incoming requests from web
 
-1. `./prepare_files.sh 2019-05-20-1558382559-http_get_80 sonar-80`
-2. `./crossfeed-agent run scanPorts scan -p 80`
-
-This fetches all domains from the database, compares against the Sonar csv of scanned ports, and updates the database with new found ports.
+If you need to run requests manually, run `./crossfeed-agent [command] [args]`, e.g. `./crossfeed-agent scan-hosts /` to scan all live hosts for the root directory.
