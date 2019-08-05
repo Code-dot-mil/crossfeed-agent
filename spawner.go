@@ -39,8 +39,9 @@ func initSpawner(arguments []string) {
 		}
 
 		command := string(body)
+		jsonInput := ""
 		if strings.HasPrefix(command, "{") { // is json
-			var dat map[string]interface{}
+			var dat map[string]map[string]interface{}
 			if err := json.Unmarshal(body, &dat); err != nil {
 				log.Println("Error parsing json: " + err.Error())
 				continue
@@ -50,7 +51,10 @@ func initSpawner(arguments []string) {
 				log.Println("Invalid input provided: " + string(body))
 				continue
 			}
-			command = cmd.(string)
+			command = cmd["command"].(string)
+			if (strings.Contains(command, "jsonInput")) {
+				jsonInput = cmd["input"].(string)
+			}
 		}
 
 		log.Println(fmt.Sprintf("Spawning job: %d with command %s", id, command))
@@ -64,6 +68,11 @@ func initSpawner(arguments []string) {
 			log.Println("Could not parse command: " + cmd)
 			continue
 		}
+
+		if jsonInput != "" {
+			args = append(args, jsonInput)
+		}
+
 		for i := range args[1:] {
 			args[i+1] = shellescape.Quote(args[i+1])
 		}

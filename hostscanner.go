@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"encoding/json"
 	"log"
 	"os"
 	"os/exec"
@@ -16,11 +17,22 @@ var (
 	scanID            = getTimestamp(true)
 	rootPath          = "output/hostscanner/" + scanID + "/"
 	hostsPath         = rootPath + "hosts.txt"
-	pathsPath         = rootPath + "/paths.txt"
-	outPath           = rootPath + "/megoutput/"
+	pathsPath         = rootPath + "paths.txt"
+	outPath           = rootPath + "megoutput/"
 	configPath        = "config/hostscanner/"
 	wappalyzeAppsPath = "output/hostscanner/apps.json"
 )
+
+type Request struct {
+	Filters map[string][]string
+	Greps []string
+	Request struct {
+		Method string
+		Uri string
+		Headers map[string]string
+		Body string
+	}
+}
 
 func fetchHosts(args []string) {
 	log.SetPrefix("[hostscanner] ")
@@ -32,15 +44,29 @@ func fetchHosts(args []string) {
 		initWappalyzer()
 	case "wappalyzeResults":
 		wappalyzeResults(args[1])
+	case "jsonInput":
+		if len(args) < 2 {
+			log.Fatal("Please provide the input.")
+		}
+		initWithJSONInput(args[1], args[2])
 	default:
-		initHostScan(args[0], args[1])
+		initHostScan(args[0], args[1], nil)
 	}
 }
 
-func initHostScan(input string, taskID string) {
+func initWithJSONInput(jsonInput string, taskID string) {
+	var request Request
+	err := json.Unmarshal([]byte(strings.Trim(jsonInput, `'`)), &request)
+	handleError(err)
+	initHostScan("", taskID, &request)
+}
+
+func initHostScan(input string, taskID string, megRequest *Request) {
 	var paths []string
 
-	if strings.HasPrefix(input, "/") { // Treat as single path
+	if megRequest != nil {
+		paths = append(paths, megRequest.Request.Uri)
+	} else if strings.HasPrefix(input, "/") { // Treat as single path
 		paths = append(paths, input)
 	} else { // Find input config file
 		file, err := os.Open(path.Join(configPath, strings.Replace(input, ".", "", -1)))
@@ -56,6 +82,21 @@ func initHostScan(input string, taskID string) {
 	}
 
 	query := `SELECT name, ports FROM "Domains" WHERE ports LIKE '%80%' OR ports LIKE '%443%';`
+	if megRequest != nil { // Format query to match request filters
+		query = `SELECT name, ports FROM "Domains" WHERE `
+		var andConds []string
+		for filter, vals := range megRequest.Filters {
+			if len(vals) == 0 {
+				continue
+			}
+			var orConds []string
+			for _, val := range vals {
+				orConds = append(orConds, fmt.Sprintf("%s LIKE '%%%s%%'", filter, val))
+			}
+			andConds = append(andConds, "(" + strings.Join(orConds, " OR ") + ")")
+		}
+		query += strings.Join(andConds, " AND ")
+	}
 	rows, err := db.Query(query)
 	handleError(err)
 	defer rows.Close()
@@ -69,7 +110,7 @@ func initHostScan(input string, taskID string) {
 	var name string
 	var ports string
 	var count int
-	for rows.Next() {
+	for rows.Next() { // Prepend http/https to all hosts
 		err := rows.Scan(&name, &ports)
 		handleError(err)
 		protocol := "http://"
@@ -93,11 +134,36 @@ func initHostScan(input string, taskID string) {
 
 	f.Close()
 
-	// start the command after having set up the pipe
-
 	log.Println(fmt.Sprintf("Beginning host scan for %d paths on %d domains", len(paths), count))
 
-	cmd := exec.Command("meg", "-c", "30", "-v", pathsPath, hostsPath, outPath)
+	args := []string{"-c", "30", "-v"}
+
+	if megRequest != nil {
+		args = append(args, "-X")
+		args = append(args, megRequest.Request.Method)
+		for name, val := range megRequest.Request.Headers {
+			if name == "Host" || name == "User-Agent" {
+				if strings.Contains(val, "{host}") {
+					continue
+				}
+				args = append(args, "--rawhttp")
+			}
+			args = append(args, "-H")
+			args = append(args, fmt.Sprintf("%s: %s", name, val))
+		}
+		if (megRequest.Request.Body != "") {
+			args = append(args, "-b")
+			args = append(args, megRequest.Request.Body)
+		}
+	}
+
+	args = append(args, pathsPath)
+	args = append(args, hostsPath)
+	args = append(args, outPath)
+
+	cmd := exec.Command("meg", args...)
+
+	// Start the command after having set up the pipe
 	stdout, err := cmd.StdoutPipe()
 	err = cmd.Start()
 	handleError(err)
@@ -112,6 +178,34 @@ func initHostScan(input string, taskID string) {
 
 	err = in.Err()
 	handleError(err)
+
+	if megRequest != nil { // Grep responses if a custom request
+		var alertOutput []string
+		for _, grep := range megRequest.Greps {
+			cmd := exec.Command("grep", "-Hri", grep, outPath)
+
+			stdout, err := cmd.StdoutPipe()
+			err = cmd.Start()
+			handleError(err)
+
+			in := bufio.NewScanner(stdout)
+			for in.Scan() {
+				text := in.Text()
+				if (!strings.Contains(text, "/") || !strings.Contains(text, ":")  || strings.Contains(text, "megoutput//index:")) {
+					continue
+				}
+				domain := strings.Split(strings.Replace(text, outPath + "/", "", 1), "/")[0]
+				match := strings.SplitN(text, ":", 2)[1]
+				alertLine := fmt.Sprintf("Domain %s matched string %s: %s", domain, grep, match)
+				log.Println(alertLine)
+				alertOutput = append(alertOutput, alertLine)
+			}
+		}
+		if len(alertOutput) > 0 {
+			alertText := fmt.Sprintf("%d results found for request to %s:\n", len(alertOutput), megRequest.Request.Uri)
+			updateTaskOutput(fmt.Sprintf("Host Scan for %s", megRequest.Request.Uri), alertText + strings.Join(alertOutput, "\n"), 3)
+		}
+	}
 
 	log.Println(fmt.Sprintf("Finished host scan for %d paths on %d domains", len(paths), count))
 
