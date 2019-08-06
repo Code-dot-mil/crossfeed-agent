@@ -7,6 +7,8 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+
+	"github.com/lib/pq"
 )
 
 type Domain struct {
@@ -133,7 +135,7 @@ func initPortScan(scans []ScanInfo, taskID string) {
 		for scanner.Scan() {
 			var ip = scanner.Text()
 			if _, exists := existingPorts[ip]; exists {
-    			continue
+				continue
 			}
 			ipsArray = append(ipsArray, fmt.Sprintf("'%s'", ip))
 			portsArray = append(portsArray, fmt.Sprintf("'%s'", port))
@@ -141,16 +143,16 @@ func initPortScan(scans []ScanInfo, taskID string) {
 		}
 		file.Close()
 
-		if (len(ipsArray) > 0) {
+		if len(ipsArray) > 0 {
 			log.Println(fmt.Sprintf("Uploading %d found open ports to db...", len(ipsArray)))
 
 			updateTaskOutput(fmt.Sprintf("Scan Ports (%s)", port), fmt.Sprintf("Port %s is now open for:\n%s", port, strings.Join(alertOutput, "\n")), 3)
 
 			query = `UPDATE "Domains" SET ports = CASE WHEN "Domains".ports IS NOT NULL AND "Domains".ports <> '' THEN "Domains".ports || ',' || data_table.ports ELSE data_table.ports END
-						FROM (SELECT unnest(array[` + strings.Join(ipsArray[:], ",") + `]) as ip, unnest(array[` + strings.Join(portsArray[:], ",") + `]) as ports)
+						FROM (SELECT unnest($1) as ip, unnest($2) as ports)
 						as data_table where "Domains".ip = data_table.ip AND strpos("Domains".ports, data_table.ports) = 0;`
 
-			_, err = db.Exec(query)
+			_, err = db.Exec(query, pq.Array(ipsArray), pq.Array(portsArray))
 			handleError(err)
 		} else {
 			log.Println("No new ports found.")
