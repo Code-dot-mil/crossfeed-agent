@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/code-dot-mil/crossfeed-agent/webanalyze"
+	"github.com/lib/pq"
 )
 
 var (
@@ -278,10 +279,10 @@ func wappalyzeResults(scanID string) {
 	log.Println(fmt.Sprintf("Uploading %d found services to db...", len(hostsArray)))
 
 	query := `UPDATE "Domains" SET services = data_table.services
-				FROM (SELECT unnest(array[` + strings.Join(hostsArray[:], ",") + `]) as name, unnest(array[` + strings.Join(servicesArray[:], ",") + `]) as services)
+				FROM (SELECT unnest($1) as name, unnest($2) as services)
 				as data_table where "Domains".name = data_table.name AND strpos("Domains".services, data_table.services) = 0;`
 
-	_, err = db.Exec(query)
+	_, err = db.Exec(query, pq.Array(hostsArray), pq.Array(servicesArray))
 	handleError(err)
 
 	log.Println("Done parsing scan results")
