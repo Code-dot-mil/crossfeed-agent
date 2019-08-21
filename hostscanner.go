@@ -2,15 +2,15 @@ package main
 
 import (
 	"bufio"
-	"fmt"
 	"encoding/json"
+	"fmt"
 	"log"
 	"os"
 	"os/exec"
 	"path"
 	"strings"
 
-	"crossfeed-agent/webanalyze"
+	"github.com/code-dot-mil/crossfeed-agent/webanalyze"
 )
 
 var (
@@ -25,12 +25,12 @@ var (
 
 type Request struct {
 	Filters map[string][]string
-	Greps []string
+	Greps   []string
 	Request struct {
-		Method string
-		Uri string
+		Method  string
+		Uri     string
 		Headers map[string]string
-		Body string
+		Body    string
 	}
 }
 
@@ -93,7 +93,7 @@ func initHostScan(input string, taskID string, megRequest *Request) {
 			for _, val := range vals {
 				orConds = append(orConds, fmt.Sprintf("%s LIKE '%%%s%%'", filter, val))
 			}
-			andConds = append(andConds, "(" + strings.Join(orConds, " OR ") + ")")
+			andConds = append(andConds, "("+strings.Join(orConds, " OR ")+")")
 		}
 		query += strings.Join(andConds, " AND ")
 	}
@@ -151,7 +151,7 @@ func initHostScan(input string, taskID string, megRequest *Request) {
 			args = append(args, "-H")
 			args = append(args, fmt.Sprintf("%s: %s", name, val))
 		}
-		if (megRequest.Request.Body != "") {
+		if megRequest.Request.Body != "" {
 			args = append(args, "-b")
 			args = append(args, megRequest.Request.Body)
 		}
@@ -191,10 +191,10 @@ func initHostScan(input string, taskID string, megRequest *Request) {
 			in := bufio.NewScanner(stdout)
 			for in.Scan() {
 				text := in.Text()
-				if (!strings.Contains(text, "/") || !strings.Contains(text, ":")  || strings.Contains(text, "megoutput//index:")) {
+				if !strings.Contains(text, "/") || !strings.Contains(text, ":") || strings.Contains(text, "megoutput//index:") {
 					continue
 				}
-				domain := strings.Split(strings.Replace(text, outPath + "/", "", 1), "/")[0]
+				domain := strings.Split(strings.Replace(text, outPath+"/", "", 1), "/")[0]
 				match := strings.SplitN(text, ":", 2)[1]
 				alertLine := fmt.Sprintf("Domain %s matched string %s: %s", domain, grep, match)
 				log.Println(alertLine)
@@ -203,7 +203,7 @@ func initHostScan(input string, taskID string, megRequest *Request) {
 		}
 		if len(alertOutput) > 0 {
 			alertText := fmt.Sprintf("%d results found for request to %s:\n", len(alertOutput), megRequest.Request.Uri)
-			updateTaskOutput(fmt.Sprintf("Host Scan for %s", megRequest.Request.Uri), alertText + strings.Join(alertOutput, "\n"), 3)
+			updateTaskOutput(fmt.Sprintf("Host Scan for %s", megRequest.Request.Uri), alertText+strings.Join(alertOutput, "\n"), 3)
 		}
 	}
 

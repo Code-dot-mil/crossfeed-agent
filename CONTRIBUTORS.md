@@ -4,8 +4,9 @@
 
 ## Signed-off-by
 
--   Copyright 2019 U.S. Federal Government (in countries where recognized) contact@dds.mil
--   _Add the copyright date, your name, and email address here. (PLEASE KEEP THIS LINE)_
+- Copyright 2019 U.S. Federal Government (in countries where recognized) contact@dds.mil
+- Copyright 2019 Adam Drake <adrake@gmail.com>
+- _Add the copyright date, your name, and email address above this line. (PLEASE KEEP THIS LINE)_
 
 ## Note for U.S. Federal Employees
 
