@@ -10,7 +10,7 @@ import (
 	"path"
 	"strings"
 
-	"github.com/code-dot-mil/crossfeed-agent/webanalyze"
+	"github.com/jack-dds/webanalyze"
 	"github.com/lib/pq"
 )
 

@@ -1,5 +1,0 @@
-hosts
-*.csv
-cmd/webanalyze/webanalyze
-cmd/webanalyze/hosts.json
-apps.json

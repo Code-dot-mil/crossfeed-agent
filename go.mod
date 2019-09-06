@@ -7,6 +7,7 @@ require (
 	github.com/bobesa/go-domain-util v0.0.0-20180815122459-1d708c097a6a
 	github.com/docopt/docopt-go v0.0.0-20180111231733-ee0de3bc6815
 	github.com/ghodss/yaml v1.0.0 // indirect
+	github.com/jack-dds/webanalyze v0.0.0-20190906021706-cd510a15f712
 	github.com/joho/sqltocsv v0.0.0-20190321025444-a9e6f980056c
 	github.com/lib/pq v1.2.0
 	github.com/rverton/webanalyze v0.0.0-20190705204417-ab86050f17f1

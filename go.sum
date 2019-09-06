@@ -12,6 +12,8 @@ github.com/docopt/docopt-go v0.0.0-20180111231733-ee0de3bc6815 h1:bWDMxwH3px2JBh
 github.com/docopt/docopt-go v0.0.0-20180111231733-ee0de3bc6815/go.mod h1:WwZ+bS3ebgob9U8Nd0kOddGdZWjyMGR8Wziv+TBNwSE=
 github.com/ghodss/yaml v1.0.0 h1:wQHKEahhL6wmXdzwWG11gIVCkOv05bNOh+Rxn0yngAk=
 github.com/ghodss/yaml v1.0.0/go.mod h1:4dBDuWmgqj2HViK6kFavaiC9ZROes6MMH2rRYeMEF04=
+github.com/jack-dds/webanalyze v0.0.0-20190906021706-cd510a15f712 h1:EYo5cvHyIVIOYACxfAdHNVSkm2pLbO9Z4COg9wS7cTw=
+github.com/jack-dds/webanalyze v0.0.0-20190906021706-cd510a15f712/go.mod h1:Cw7OpWPDcnhnvdzlWFFNP7FAhOJHauYUDCG8L6NSsNQ=
 github.com/joho/sqltocsv v0.0.0-20190321025444-a9e6f980056c h1:RKg/wKiPY5HdhOKErDcHwUXgZg+s0wL6swtsfMKG8a8=
 github.com/joho/sqltocsv v0.0.0-20190321025444-a9e6f980056c/go.mod h1:mAVCUAYtW9NG31eB30umMSLKcDt6mCUWSjoSn5qBh0k=
 github.com/lib/pq v1.2.0 h1:LXpIM/LZ5xGFhOpXAQUIMM1HdyqzVYM13zNdjCEEcA0=
