@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -52,7 +53,7 @@ func initSpawner(arguments []string) {
 				continue
 			}
 			command = cmd["command"].(string)
-			if (strings.Contains(command, "jsonInput")) {
+			if strings.Contains(command, "jsonInput") {
 				jsonInput = cmd["input"].(string)
 			}
 		}
@@ -79,7 +80,15 @@ func initSpawner(arguments []string) {
 
 		args = append(args, fmt.Sprintf("%d", taskID)) // the taskID is always the last argument
 
-		_, err = exec.Command(currentDir+"/crossfeed-agent", args...).Output()
+		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(config.SPAWNER_TIMEOUT_LENGTH)*time.Minute)
+		defer cancel()
+
+		_, err = exec.CommandContext(ctx, currentDir+"/crossfeed-agent", args...).Output()
+
+		if ctx.Err() == context.DeadlineExceeded { // If command timed out, still process results
+			log.Println(fmt.Sprintf("Command %s timed out after %d minutes, continuing.", command, config.SPAWNER_TIMEOUT_LENGTH))
+		}
+
 		if err != nil {
 			log.Println("Executing job failed: " + err.Error())
 			updateTaskStatus(taskID, "failed")

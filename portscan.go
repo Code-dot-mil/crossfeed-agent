@@ -137,9 +137,9 @@ func initPortScan(scans []ScanInfo, taskID string) {
 			if _, exists := existingPorts[ip]; exists {
 				continue
 			}
-			ipsArray = append(ipsArray, fmt.Sprintf("'%s'", ip))
-			portsArray = append(portsArray, fmt.Sprintf("'%s'", port))
-			alertOutput = append(alertOutput, fmt.Sprintf("%s", ip))
+			ipsArray = append(ipsArray, ip)
+			portsArray = append(portsArray, port)
+			alertOutput = append(alertOutput, ip)
 		}
 		file.Close()
 
@@ -149,7 +149,7 @@ func initPortScan(scans []ScanInfo, taskID string) {
 			updateTaskOutput(fmt.Sprintf("Scan Ports (%s)", port), fmt.Sprintf("Port %s is now open for:\n%s", port, strings.Join(alertOutput, "\n")), 3)
 
 			query = `UPDATE "Domains" SET ports = CASE WHEN "Domains".ports IS NOT NULL AND "Domains".ports <> '' THEN "Domains".ports || ',' || data_table.ports ELSE data_table.ports END
-						FROM (SELECT unnest($1) as ip, unnest($2) as ports)
+						FROM (SELECT unnest($1::text[]) as ip, unnest($2::text[]) as ports)
 						as data_table where "Domains".ip = data_table.ip AND strpos("Domains".ports, data_table.ports) = 0;`
 
 			_, err = db.Exec(query, pq.Array(ipsArray), pq.Array(portsArray))

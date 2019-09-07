@@ -13,17 +13,18 @@ import (
 )
 
 type Configuration struct {
-	DB_HOST             string
-	DB_PORT             string
-	DB_USER             string
-	DB_PASSWORD         string
-	DB_NAME             string
-	LOG_PATH            string
-	DEBUG               bool
-	BEANSTALK_HOST      string
-	BEANSTALK_POLL_RATE int
-	SONAR_API_KEY       string
-	SLACK_WEBHOOK_URL   string
+	DB_HOST                string
+	DB_PORT                string
+	DB_USER                string
+	DB_PASSWORD            string
+	DB_NAME                string
+	LOG_PATH               string
+	DEBUG                  bool
+	BEANSTALK_HOST         string
+	BEANSTALK_POLL_RATE    int
+	SONAR_API_KEY          string
+	SLACK_WEBHOOK_URL      string
+	SPAWNER_TIMEOUT_LENGTH int
 }
 
 var config Configuration

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -9,6 +10,7 @@ import (
 	"os/exec"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/jack-dds/webanalyze"
 	"github.com/lib/pq"
@@ -22,6 +24,7 @@ var (
 	outPath           = rootPath + "megoutput/"
 	configPath        = "config/hostscanner/"
 	wappalyzeAppsPath = "output/hostscanner/apps.json"
+	megTimeoutLength  = 60
 )
 
 type Request struct {
@@ -162,7 +165,10 @@ func initHostScan(input string, taskID string, megRequest *Request) {
 	args = append(args, hostsPath)
 	args = append(args, outPath)
 
-	cmd := exec.Command("meg", args...)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(megTimeoutLength)*time.Minute)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "meg", args...)
 
 	// Start the command after having set up the pipe
 	stdout, err := cmd.StdoutPipe()
@@ -177,8 +183,12 @@ func initHostScan(input string, taskID string, megRequest *Request) {
 		log.Println(fmt.Sprintf("(%d/%d) %s", cur, count, in.Text()))
 	}
 
-	err = in.Err()
-	handleError(err)
+	if ctx.Err() == context.DeadlineExceeded { // If command timed out, still process results
+		log.Println(fmt.Sprintf("Command meg timed out after %d minutes, continuing.", megTimeoutLength))
+	} else {
+		err = in.Err()
+		handleError(err)
+	}
 
 	if megRequest != nil { // Grep responses if a custom request
 		var alertOutput []string
@@ -210,9 +220,9 @@ func initHostScan(input string, taskID string, megRequest *Request) {
 
 	log.Println(fmt.Sprintf("Finished host scan for %d paths on %d domains", len(paths), count))
 
-	if input == "/" { // Wappalyze results if index page
-		wappalyzeResults(scanID)
-	}
+	// if input == "/" { // Wappalyze results if index page
+	wappalyzeResults(scanID)
+	// }
 
 }
 
@@ -250,7 +260,7 @@ func wappalyzeResults(scanID string) {
 		}
 
 		hostName := strings.Replace(strings.Split(result.Host, "//")[1], "/", "", -1)
-		hostsArray = append(hostsArray, fmt.Sprintf("'%s'", hostName))
+		hostsArray = append(hostsArray, hostName)
 
 		results := ""
 		for i, a := range result.Matches {
@@ -273,13 +283,13 @@ func wappalyzeResults(scanID string) {
 		}
 
 		results = strings.Replace(results, "'", "", -1)
-		servicesArray = append(servicesArray, fmt.Sprintf("'%s'", results))
+		servicesArray = append(servicesArray, results)
 	}
 
 	log.Println(fmt.Sprintf("Uploading %d found services to db...", len(hostsArray)))
 
 	query := `UPDATE "Domains" SET services = data_table.services
-				FROM (SELECT unnest($1) as name, unnest($2) as services)
+				FROM (SELECT unnest($1::text[]) as name, unnest($2::text[]) as services)
 				as data_table where "Domains".name = data_table.name AND strpos("Domains".services, data_table.services) = 0;`
 
 	_, err = db.Exec(query, pq.Array(hostsArray), pq.Array(servicesArray))
