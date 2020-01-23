@@ -16,16 +16,7 @@ import (
 	"github.com/lib/pq"
 )
 
-var (
-	scanID            = getTimestamp(true)
-	rootPath          = "output/hostscanner/" + scanID + "/"
-	hostsPath         = rootPath + "hosts.txt"
-	pathsPath         = rootPath + "paths.txt"
-	outPath           = rootPath + "megoutput/"
-	configPath        = "config/hostscanner/"
-	wappalyzeAppsPath = "output/hostscanner/apps.json"
-	megTimeoutLength  = 60
-)
+var wappalyzeAppsPath = "output/hostscanner/apps.json"
 
 type Request struct {
 	Filters map[string][]string
@@ -46,8 +37,6 @@ func fetchHosts(args []string) {
 	switch args[0] {
 	case "initWappalyzer":
 		initWappalyzer()
-	case "wappalyzeResults":
-		wappalyzeResults(args[1])
 	case "jsonInput":
 		if len(args) < 2 {
 			log.Fatal("Please provide the input.")
@@ -66,6 +55,16 @@ func initWithJSONInput(jsonInput string, taskID string) {
 }
 
 func initHostScan(input string, taskID string, megRequest *Request) {
+	var (
+		scanID           = getTimestamp(true)
+		rootPath         = "output/hostscanner/" + scanID + "/"
+		hostsPath        = rootPath + "hosts.txt"
+		pathsPath        = rootPath + "paths.txt"
+		outPath          = rootPath + "megoutput/"
+		configPath       = "config/hostscanner/"
+		megTimeoutLength = 60
+	)
+
 	var paths []string
 
 	if megRequest != nil {
@@ -220,9 +219,9 @@ func initHostScan(input string, taskID string, megRequest *Request) {
 
 	log.Println(fmt.Sprintf("Finished host scan for %d paths on %d domains", len(paths), count))
 
-	// if input == "/" { // Wappalyze results if index page
-	wappalyzeResults(scanID)
-	// }
+	if input == "/" { // Wappalyze results if index page
+		wappalyzeResults(scanID, rootPath, outPath)
+	}
 
 }
 
@@ -232,10 +231,7 @@ func initWappalyzer() {
 	log.Println("app definition file updated from ", webanalyze.WappalyzerURL)
 }
 
-func wappalyzeResults(scanID string) {
-	rootPath = "output/hostscanner/" + scanID + "/"
-	outPath = rootPath + "/megoutput/"
-
+func wappalyzeResults(scanID string, rootPath string, outPath string) {
 	workers := 4
 	crawlCount := 0
 	searchSubdomain := false
@@ -290,7 +286,7 @@ func wappalyzeResults(scanID string) {
 
 	query := `UPDATE "Domains" SET services = data_table.services
 				FROM (SELECT unnest($1::text[]) as name, unnest($2::text[]) as services)
-				as data_table where "Domains".name = data_table.name AND strpos("Domains".services, data_table.services) = 0;`
+				as data_table where "Domains".name = data_table.name AND ("Domains".services IS NULL OR strpos("Domains".services, data_table.services) = 0);`
 
 	_, err = db.Exec(query, pq.Array(hostsArray), pq.Array(servicesArray))
 	handleError(err)

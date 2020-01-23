@@ -11,54 +11,76 @@ import (
 	"time"
 
 	"github.com/alessio/shellescape"
-	"github.com/beanstalkd/go-beanstalk"
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/sqs"
 )
+
+type Job struct {
+	Command string
+	Payload string
+}
 
 // Background process to consume and initiate jobs from queue
 func initSpawner(arguments []string) {
-
 	currentDir, err := os.Getwd()
 	handleError(err)
 
 	log.SetPrefix("[spawner] ")
-	client, err := beanstalk.Dial("tcp", config.BEANSTALK_HOST)
-	handleError(err)
+
+	sess, err := session.NewSession(&aws.Config{
+		Region:      aws.String(config.AWS_REGION),
+		Credentials: credentials.NewStaticCredentials(config.AWS_ACCESS_KEY_ID, config.AWS_SECRET_ACCESS_KEY, ""),
+	})
+	svc := sqs.New(sess)
+
 	log.Println("Spawner initiated. Waiting for next job.")
 	for {
-		id, body, err := client.Reserve(time.Duration(config.BEANSTALK_POLL_RATE) * time.Second)
+		// Receive job from queue
+		result, err := svc.ReceiveMessage(&sqs.ReceiveMessageInput{
+			AttributeNames: []*string{
+				aws.String(sqs.MessageSystemAttributeNameSentTimestamp),
+			},
+			MessageAttributeNames: []*string{
+				aws.String(sqs.QueueAttributeNameAll),
+			},
+			QueueUrl:            &config.SQS_URL,
+			MaxNumberOfMessages: aws.Int64(1),
+			VisibilityTimeout:   aws.Int64(20), // 20 seconds
+			WaitTimeSeconds:     aws.Int64(20),
+		})
+
 		if err != nil {
-			if !strings.Contains(err.Error(), "timeout") { // Don't print if it's a timeout
-				log.Println("Error reserving job: " + err.Error())
-			}
+			fmt.Println("Error reserving job: " + err.Error())
+			continue
+		} else if len(result.Messages) == 0 {
 			continue
 		}
 
-		err = client.Delete(id)
+		message := result.Messages[0]
+		id := *message.MessageId
+
+		// Delete job from queue
+		_, err = svc.DeleteMessage(&sqs.DeleteMessageInput{
+			QueueUrl:      &config.SQS_URL,
+			ReceiptHandle: message.ReceiptHandle,
+		})
+
 		if err != nil {
 			log.Println(fmt.Sprintf("Error deleting job: %d, %s", id, err.Error()))
 			continue
 		}
 
-		command := string(body)
-		jsonInput := ""
-		if strings.HasPrefix(command, "{") { // is json
-			var dat map[string]map[string]interface{}
-			if err := json.Unmarshal(body, &dat); err != nil {
-				log.Println("Error parsing json: " + err.Error())
-				continue
-			}
-			cmd, exists := dat["payload"]
-			if !exists {
-				log.Println("Invalid input provided: " + string(body))
-				continue
-			}
-			command = cmd["command"].(string)
-			if strings.Contains(command, "jsonInput") {
-				jsonInput = cmd["input"].(string)
-			}
+		var job Job
+		if err := json.Unmarshal([]byte(*message.Body), &job); err != nil {
+			log.Println("Error parsing json: " + err.Error())
+			continue
 		}
 
-		log.Println(fmt.Sprintf("Spawning job: %d with command %s", id, command))
+		command := job.Command
+
+		log.Println(fmt.Sprintf("Spawning job: %s with command %s", id, command))
 
 		taskID := initStatusTracker(command)
 
@@ -66,12 +88,12 @@ func initSpawner(arguments []string) {
 		cmd := args[0]
 		allowedCommands := []string{"scan-ports", "scan-hosts", "subjack"}
 		if !sliceContains(allowedCommands, cmd) {
-			log.Println("Could not parse command: " + cmd)
+			log.Println("Command not found: " + cmd)
 			continue
 		}
 
-		if jsonInput != "" {
-			args = append(args, jsonInput)
+		if job.Payload != "" {
+			args = append(args, job.Payload)
 		}
 
 		for i := range args[1:] {
@@ -96,21 +118,7 @@ func initSpawner(arguments []string) {
 			updateTaskStatus(taskID, "finished")
 		}
 
-		log.Println(fmt.Sprintf("Finished job: %d", id))
+		log.Println(fmt.Sprintf("Finished job: %s", id))
 		log.Println("Waiting for next job.")
 	}
-}
-
-// Enqueues a job on the job queue
-func enqueueJob(args []string) {
-	log.SetPrefix("[enqueue] ")
-	client, err := beanstalk.Dial("tcp", config.BEANSTALK_HOST)
-	handleError(err)
-	command := strings.Join(args, " ")
-	var priority uint32 = 1
-	delay := time.Duration(0)
-	ttr := 60 * time.Minute
-	id, err := client.Put([]byte(command), priority, delay, ttr)
-	handleError(err)
-	log.Println(fmt.Sprintf("Successfully enqueued command %s with job id %d.", command, id))
 }

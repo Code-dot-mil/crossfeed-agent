@@ -3,13 +3,14 @@ package main
 import (
 	"database/sql"
 	"fmt"
-	"github.com/docopt/docopt-go"
-	_ "github.com/lib/pq"
-	"github.com/tkanos/gonfig"
 	"io"
 	"log"
 	"os"
 	"path"
+
+	"github.com/docopt/docopt-go"
+	_ "github.com/lib/pq"
+	"github.com/tkanos/gonfig"
 )
 
 type Configuration struct {
@@ -20,11 +21,13 @@ type Configuration struct {
 	DB_NAME                string
 	LOG_PATH               string
 	DEBUG                  bool
-	BEANSTALK_HOST         string
-	BEANSTALK_POLL_RATE    int
 	SONAR_API_KEY          string
 	SLACK_WEBHOOK_URL      string
 	SPAWNER_TIMEOUT_LENGTH int
+	SQS_URL                string
+	AWS_REGION             string
+	AWS_ACCESS_KEY_ID      string
+	AWS_SECRET_ACCESS_KEY  string
 }
 
 var config Configuration
@@ -52,10 +55,10 @@ func main() {
 	err = db.Ping()
 	handleError(err)
 
-	usage := `Crossfeed agent. Used to execute backend scans on a cron job. Scans are pushed to remote crossfeed database.
+	usage := `Crossfeed agent. Used to execute backend scans from job queue. Scans are pushed to remote crossfeed database.
 
 Examples:
-crossfeed-agent scanPorts 2019-05-20-1558346873-https_get_443 443
+crossfeed-agent scan-ports 443
 
 Usage:
   crossfeed-agent <command> [<args>...]
@@ -77,8 +80,6 @@ Options:
 			subjack(getArgs(arguments))
 		case "spawner":
 			initSpawner(getArgs(arguments))
-		case "enqueue":
-			enqueueJob(getArgs(arguments))
 		default:
 			fmt.Println("Command not found: " + arguments["<command>"].(string))
 		}
