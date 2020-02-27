@@ -29,11 +29,13 @@ func initSpawner(arguments []string) {
 
 	log.SetPrefix("[spawner] ")
 
-	sess, err := session.NewSession(&aws.Config{
+	awsSession, err := session.NewSession(&aws.Config{
 		Region:      aws.String(config.AWS_REGION),
 		Credentials: credentials.NewStaticCredentials(config.AWS_ACCESS_KEY_ID, config.AWS_SECRET_ACCESS_KEY, ""),
+		Endpoint:    aws.String(config.SQS_ENDPOINT),
 	})
-	svc := sqs.New(sess)
+
+	svc := sqs.New(awsSession)
 
 	log.Println("Spawner initiated. Waiting for next job.")
 	for {
@@ -86,7 +88,7 @@ func initSpawner(arguments []string) {
 
 		args := strings.Split(command, " ")
 		cmd := args[0]
-		allowedCommands := []string{"scan-ports", "scan-hosts", "subjack"}
+		allowedCommands := []string{"scan-ports", "scan-hosts", "subjack", "bitdiscovery", "store-results"}
 		if !sliceContains(allowedCommands, cmd) {
 			log.Println("Command not found: " + cmd)
 			continue

@@ -6,9 +6,15 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
-	"github.com/joho/sqltocsv"
 	"net/http"
 	"time"
+
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/s3/s3manager"
+	"github.com/aws/aws-sdk-go/service/sqs"
+	"github.com/joho/sqltocsv"
 )
 
 // Helper method to log fatally if an error occurs
@@ -62,11 +68,11 @@ func sliceContains(slice []string, str string) bool {
 
 // Performs an http request to the given url with specified headers
 // Results are returned in result, which should match the JSON schema
-func fetchExternalAPI(url string, headers map[string]string, result interface{}) {
+func fetchExternalAPI(url string, method string, postBody *bytes.Buffer, headers map[string]string, result interface{}) {
 	client := http.Client{
 		Timeout: time.Second * 10,
 	}
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+	req, err := http.NewRequest(method, url, postBody)
 	handleError(err)
 
 	for key, value := range headers {
@@ -137,22 +143,60 @@ func updateTaskOutput(command string, text string, priority int) {
 		}
 		byteArray := new(bytes.Buffer)
 		json.NewEncoder(byteArray).Encode(requestBody)
-	    req, err := http.NewRequest("POST", config.SLACK_WEBHOOK_URL, byteArray)
-	    req.Header.Set("Content-Type", "application/json")
+		req, err := http.NewRequest("POST", config.SLACK_WEBHOOK_URL, byteArray)
+		req.Header.Set("Content-Type", "application/json")
 
-	    client := &http.Client{}
-	    resp, err := client.Do(req)
-	    if err != nil {
-	        log.Println("Failed posting to Slack", err)
-	    }
-	    defer resp.Body.Close()
+		client := &http.Client{}
+		resp, err := client.Do(req)
+		if err != nil {
+			log.Println("Failed posting to Slack", err)
+		}
+		defer resp.Body.Close()
 
-	    if (resp.Status == "200 OK") {
-	    	log.Println("Successfully posted to Slack.")
-	    } else { 	
-	    	body, _ := ioutil.ReadAll(resp.Body)
-	    	log.Println("Received error from Slack: " + string(body) + resp.Status)
-	    }
+		if resp.Status == "200 OK" {
+			log.Println("Successfully posted to Slack.")
+		} else {
+			body, _ := ioutil.ReadAll(resp.Body)
+			log.Println("Received error from Slack: " + string(body) + resp.Status)
+		}
 	}
 
+}
+
+func uploadToS3(name string, result []byte) {
+
+	awsSession, err := session.NewSession(&aws.Config{
+		Region:           aws.String(config.AWS_REGION),
+		Credentials:      credentials.NewStaticCredentials(config.AWS_ACCESS_KEY_ID, config.AWS_SECRET_ACCESS_KEY, ""),
+		Endpoint:         aws.String(config.S3_ENDPOINT),
+		S3ForcePathStyle: aws.Bool(true),
+	})
+	handleError(err)
+
+	uploader := s3manager.NewUploader(awsSession)
+	_, err = uploader.Upload(&s3manager.UploadInput{
+		Bucket: aws.String(config.S3_BUCKET),
+		Key:    aws.String(name),
+		Body:   bytes.NewReader(result),
+	})
+	handleError(err)
+}
+
+func notifyStorageService(filename string) {
+
+	awsSession, err := session.NewSession(&aws.Config{
+		Region:      aws.String(config.AWS_REGION),
+		Credentials: credentials.NewStaticCredentials(config.AWS_ACCESS_KEY_ID, config.AWS_SECRET_ACCESS_KEY, ""),
+		Endpoint:    aws.String(config.SQS_ENDPOINT),
+	})
+	handleError(err)
+
+	svc := sqs.New(awsSession)
+	json, err := json.Marshal(map[string]string{"command": "store-results " + filename})
+	handleError(err)
+	_, err = svc.SendMessage(&sqs.SendMessageInput{
+		MessageBody: aws.String(string(json)),
+		QueueUrl:    aws.String(config.SQS_URL),
+	})
+	handleError(err)
 }

@@ -4,13 +4,16 @@
 	"DB_NAME": "crossfeed",
 	"DB_HOST": "localhost",
 	"DB_PORT": "5432",
-	"LOG_PATH": "/logs",
+	"LOG_PATH": "logs",
 	"DEBUG": false,
 	"SONAR_API_KEY": "",
 	"SLACK_WEBHOOK_URL": "",
 	"SPAWNER_TIMEOUT_LENGTH": 60,
-	"SQS_URL": "",
 	"AWS_REGION": "us-east-1",
 	"AWS_ACCESS_KEY_ID": "",
-	"AWS_SECRET_ACCESS_KEY": ""
+	"AWS_SECRET_ACCESS_KEY": "",
+	"S3_BUCKET": "",
+	"BD_API_KEY": "",
+	"SQS_URL": "http://localhost:4576/queue/default",
+	"S3_BUCKET": "crossfeed-output-development"
 }

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"os/exec"
 	"strings"
@@ -44,6 +45,8 @@ func scanPorts(args []string) {
 func scanLatestResults(ports []string, taskID string) {
 	var availableFiles SonarStudy
 	fetchExternalAPI("https://us.api.insight.rapid7.com/opendata/studies/sonar.tcp/",
+		http.MethodGet,
+		nil,
 		map[string]string{
 			"X-Api-Key": config.SONAR_API_KEY,
 		},
@@ -56,6 +59,8 @@ func scanLatestResults(ports []string, taskID string) {
 			if strings.HasSuffix(file, fmt.Sprintf("_%s.csv.gz", port)) {
 				var downloadUrl DownloadUrl
 				fetchExternalAPI("https://us.api.insight.rapid7.com/opendata/studies/sonar.tcp/"+file+"/download/",
+					http.MethodGet,
+					nil,
 					map[string]string{
 						"X-Api-Key": config.SONAR_API_KEY,
 					},
@@ -97,7 +102,7 @@ func initPortScan(scans []ScanInfo, taskID string) {
 
 		// Download Sonar data for url
 		log.Println("Starting port scan for port " + port + " using " + downloadUrl)
-		_, err := exec.Command("/bin/sh", "prepare_files.sh", downloadUrl, port).Output()
+		_, err := exec.Command("/bin/sh", "scripts/prepare_files.sh", downloadUrl, port).Output()
 		handleError(err)
 
 		// Compare lines in both sorted files
